@@ -178,7 +178,7 @@
   m.innerHTML=
     '<div id="ysh-unit-box">'+
       '<div id="ysh-unit-head">'+
-        '<div id="ysh-unit-title">Yahoo!ショッピング 単価一覧 ('+items.length+'件)</div>'+
+        '<div id="ysh-unit-title">Yahoo!ショッピング 単価一覧 v1.3 ('+items.length+'件)</div>'+
         '<button type="button" id="ysh-close" class="ysh-btn">閉じる</button>'+
       '</div>'+
       '<div id="ysh-unit-ctrl">'+
@@ -254,7 +254,7 @@
     }
 
     var titleEl=document.getElementById('ysh-unit-title');
-    if(titleEl){titleEl.textContent='Yahoo!ショッピング 単価一覧 ('+arr.length+'/'+items.length+'件)';}
+    if(titleEl){titleEl.textContent='Yahoo!ショッピング 単価一覧 v1.3 ('+arr.length+'/'+items.length+'件)';}
 
     var h='<table class="ysh-tbl"><thead><tr>'+
       '<th>1個 / 1個(実質)</th><th>数量</th><th>商品価格 / 実質価格</th><th>商品名・ストア</th><th></th>'+

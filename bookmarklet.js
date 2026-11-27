@@ -190,7 +190,7 @@
     m.innerHTML=
       '<div id="amz-var-box">'+
         '<div id="amz-var-head">'+
-          '<div id="amz-var-title">'+esc(title)+'</div>'+
+          '<div id="amz-var-title">v1.3 | '+esc(title)+'</div>'+
           '<div id="amz-var-status">準備中</div>'+
           '<button type="button" id="amz-var-stop" class="amz-btn amz-btn-danger">停止</button>'+
           '<button type="button" id="amz-var-close" class="amz-btn">閉じる</button>'+
