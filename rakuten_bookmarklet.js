@@ -160,7 +160,7 @@
   m.innerHTML=
     '<div id="rkt-unit-box">'+
       '<div id="rkt-unit-head">'+
-        '<div id="rkt-unit-title">楽天市場 単価一覧 v1.5 ('+items.length+'件)</div>'+
+        '<div id="rkt-unit-title">楽天市場 単価一覧 v1.6 ('+items.length+'件)</div>'+
         '<button type="button" id="rkt-close" class="rkt-btn">閉じる</button>'+
       '</div>'+
       '<div id="rkt-unit-ctrl">'+
@@ -205,7 +205,7 @@
     if(state.q){
       var tokens=state.q.split(/\s+/).filter(Boolean);
       arr=arr.filter(function(it){
-        var hay=(it.title+' '+it.store).toLowerCase();
+        var hay=it.title.toLowerCase();
         for(var t=0;t<tokens.length;t++){
           var tok=tokens[t];
           if(tok.charAt(0)==='-'&&tok.length>1){
@@ -238,7 +238,7 @@
     }
 
     var titleEl=document.getElementById('rkt-unit-title');
-    if(titleEl){titleEl.textContent='楽天市場 単価一覧 v1.5 ('+arr.length+'/'+items.length+'件)';}
+    if(titleEl){titleEl.textContent='楽天市場 単価一覧 v1.6 ('+arr.length+'/'+items.length+'件)';}
 
     var h='<table class="rkt-tbl"><thead><tr>'+
       '<th>1個 / 1個(実質)</th><th>数量</th><th>商品価格 / 実質価格</th><th>商品名・ショップ</th><th></th>'+
