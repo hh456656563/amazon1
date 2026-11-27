@@ -90,14 +90,14 @@
 
         var q=parseQty(title);
         var total=price+ship;
-        var net=Math.max(0,total-pt);
+        var net=Math.max(0,price+ship-pt);
 
         var oldB=c.querySelector('.ysh-unit-badge');
         if(oldB){oldB.remove();}
         var badge=document.createElement('div');
         badge.className='ysh-unit-badge';
         badge.style.cssText='margin:4px 0;padding:4px 8px;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;font-size:12px;font-weight:700;color:#92400e;display:inline-block;';
-        badge.textContent='単価: '+Math.round(total/q.qty)+'円/'+q.unit+' ('+q.qty+q.unit+'・実質'+Math.round(net/q.qty)+'円)';
+        badge.textContent='1'+q.unit+': '+Math.round(price/q.qty)+'円 (実質'+Math.round(net/q.qty)+'円・'+q.qty+q.unit+')';
         linkEl.parentNode.insertBefore(badge,linkEl.nextSibling);
 
         list.push({
@@ -158,7 +158,9 @@
       '.ysh-btn{border:none;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;background:#e2e8f0;color:#1e293b;white-space:nowrap;}'+
       '.ysh-btn-active{background:#0f172a;color:#fff;}'+
       '#ysh-unit-ctrl{padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;}'+
-      '#ysh-unit-q{flex:1;min-width:150px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;}'+
+      '#ysh-unit-q{flex:1;min-width:160px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;}'+
+      '#ysh-price-range{width:130px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;}'+
+      '#ysh-price-target{padding:7px 8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff;}'+
       '#ysh-unit-body{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:8px 12px 16px;}'+
       '.ysh-tbl{width:100%;border-collapse:collapse;font-size:13px;}'+
       '.ysh-tbl th{position:sticky;top:0;background:#f1f5f9;text-align:left;padding:8px;border-bottom:2px solid #cbd5e1;font-size:12px;color:#475569;z-index:1;}'+
@@ -170,7 +172,7 @@
     document.head.appendChild(stEl);
   }
 
-  var state={sort:'unit',onlyFree:false,q:''};
+  var state={sort:'net_unit',dir:1,onlyFree:false,q:'',priceRange:'',priceTarget:'net'};
   var m=document.createElement('div');
   m.id='ysh-unit-modal';
   m.innerHTML=
@@ -180,47 +182,91 @@
         '<button type="button" id="ysh-close" class="ysh-btn">閉じる</button>'+
       '</div>'+
       '<div id="ysh-unit-ctrl">'+
-        '<input id="ysh-unit-q" type="search" placeholder="絞り込み (商品名・ストア)">'+
-        '<button type="button" data-sort="unit" class="ysh-btn ysh-btn-active">単価順(送料込)</button>'+
-        '<button type="button" data-sort="net" class="ysh-btn">実質単価順</button>'+
-        '<button type="button" data-sort="total" class="ysh-btn">総額順</button>'+
+        '<input id="ysh-unit-q" type="search" placeholder="絞り込み (例: 24本 -訳あり)">'+
+        '<select id="ysh-price-target"><option value="net">実質価格</option><option value="price">商品価格</option></select>'+
+        '<input id="ysh-price-range" type="text" placeholder="例: 1-99999">'+
+        '<button type="button" data-sort="net_unit" class="ysh-btn ysh-btn-active">1個(実質)</button>'+
+        '<button type="button" data-sort="unit" class="ysh-btn">1個</button>'+
+        '<button type="button" data-sort="net" class="ysh-btn">実質価格</button>'+
+        '<button type="button" data-sort="price" class="ysh-btn">商品価格</button>'+
         '<button type="button" data-sort="orig" class="ysh-btn">元の順</button>'+
+        '<button type="button" id="ysh-dir" class="ysh-btn ysh-btn-active">昇順▲</button>'+
         '<button type="button" id="ysh-free" class="ysh-btn">送料無料のみ</button>'+
       '</div>'+
       '<div id="ysh-unit-body"></div>'+
     '</div>';
   document.body.appendChild(m);
 
+  function parseRange(str){
+    var s=toHalf(str||'').replace(/,/g,'').trim();
+    if(!s){return null;}
+    var mR=s.match(/^([0-9]+)?\s*[-~〜]\s*([0-9]+)?$/);
+    if(mR){
+      var mn=mR[1]?parseInt(mR[1],10):0;
+      var mx=mR[2]?parseInt(mR[2],10):Infinity;
+      return {min:mn,max:mx};
+    }
+    var mOne=s.match(/^[0-9]+$/);
+    if(mOne){
+      var v=parseInt(mOne[0],10);
+      return {min:v,max:v};
+    }
+    return null;
+  }
+
   function render(){
     var body=document.getElementById('ysh-unit-body');
     var arr=items.slice();
     if(state.onlyFree){arr=arr.filter(function(it){return it.ship===0;});}
     if(state.q){
+      var tokens=state.q.split(/\s+/).filter(Boolean);
       arr=arr.filter(function(it){
-        return (it.title+' '+it.store).toLowerCase().indexOf(state.q)>=0;
+        var hay=(it.title+' '+it.store).toLowerCase();
+        for(var t=0;t<tokens.length;t++){
+          var tok=tokens[t];
+          if(tok.charAt(0)==='-'&&tok.length>1){
+            if(hay.indexOf(tok.slice(1))>=0){return false;}
+          }else{
+            if(hay.indexOf(tok)<0){return false;}
+          }
+        }
+        return true;
       });
     }
-    if(state.sort==='unit'){
-      arr.sort(function(a,b){return (a.total/a.qty)-(b.total/b.qty)||a.total-b.total;});
+    var rg=parseRange(state.priceRange);
+    if(rg){
+      arr=arr.filter(function(it){
+        var val=state.priceTarget==='price'?it.price:it.net;
+        return val>=rg.min&&val<=rg.max;
+      });
+    }
+    var d=state.dir;
+    if(state.sort==='net_unit'){
+      arr.sort(function(a,b){return d*((a.net/a.qty)-(b.net/b.qty))||d*(a.net-b.net);});
+    }else if(state.sort==='unit'){
+      arr.sort(function(a,b){return d*((a.price/a.qty)-(b.price/b.qty))||d*(a.price-b.price);});
     }else if(state.sort==='net'){
-      arr.sort(function(a,b){return (a.net/a.qty)-(b.net/b.qty)||a.net-b.net;});
-    }else if(state.sort==='total'){
-      arr.sort(function(a,b){return a.total-b.total||a.idx-b.idx;});
+      arr.sort(function(a,b){return d*(a.net-b.net)||a.idx-b.idx;});
+    }else if(state.sort==='price'){
+      arr.sort(function(a,b){return d*(a.price-b.price)||a.idx-b.idx;});
     }else{
-      arr.sort(function(a,b){return a.idx-b.idx;});
+      arr.sort(function(a,b){return d*(a.idx-b.idx);});
     }
 
+    var titleEl=document.getElementById('ysh-unit-title');
+    if(titleEl){titleEl.textContent='Yahoo!ショッピング 単価一覧 ('+arr.length+'/'+items.length+'件)';}
+
     var h='<table class="ysh-tbl"><thead><tr>'+
-      '<th>単価</th><th>数量</th><th>総額(送料/Pt)</th><th>商品名・ストア</th><th></th>'+
+      '<th>1個 / 1個(実質)</th><th>数量</th><th>商品価格 / 実質価格</th><th>商品名・ストア</th><th></th>'+
       '</tr></thead><tbody>';
     for(var i=0;i<arr.length;i++){
       var it=arr[i];
-      var u=(it.total/it.qty).toFixed(1).replace(/\.0$/,'');
+      var u=(it.price/it.qty).toFixed(1).replace(/\.0$/,'');
       var nu=(it.net/it.qty).toFixed(1).replace(/\.0$/,'');
       h+='<tr>'+
-        '<td><div class="ysh-u">'+u+'円/'+esc(it.unit)+'</div><div class="ysh-sub">実質 '+nu+'円</div></td>'+
+        '<td><div class="ysh-u">実質 '+nu+'円/'+esc(it.unit)+'</div><div class="ysh-sub">1個 '+u+'円</div></td>'+
         '<td><input type="number" min="1" class="ysh-qty-in" data-idx="'+it.idx+'" value="'+it.qty+'"><div class="ysh-sub">'+esc(it.rule)+'</div></td>'+
-        '<td><div><b>'+it.total.toLocaleString()+'円</b></div><div class="ysh-sub">'+esc(it.shipTxt)+(it.pt?' / -'+it.pt+'pt':'')+'</div></td>'+
+        '<td><div><b>実質 '+it.net.toLocaleString()+'円</b></div><div class="ysh-sub">商品 '+it.price.toLocaleString()+'円 / '+esc(it.shipTxt)+(it.pt?' / -'+it.pt+'pt':'')+'</div></td>'+
         '<td><div>'+esc(it.title)+'</div><div class="ysh-sub">'+esc(it.store)+'</div></td>'+
         '<td><a class="ysh-open" href="'+esc(it.href)+'" target="_blank" rel="noopener">開く</a></td>'+
       '</tr>';
@@ -245,6 +291,13 @@
 
   document.getElementById('ysh-close').onclick=function(){m.remove();};
   document.getElementById('ysh-unit-q').oninput=function(e){state.q=e.target.value.trim().toLowerCase();render();};
+  document.getElementById('ysh-price-range').oninput=function(e){state.priceRange=e.target.value;render();};
+  document.getElementById('ysh-price-target').onchange=function(e){state.priceTarget=e.target.value;render();};
+  document.getElementById('ysh-dir').onclick=function(e){
+    state.dir*=-1;
+    e.target.textContent=state.dir===1?'昇順▲':'降順▼';
+    render();
+  };
   document.getElementById('ysh-free').onclick=function(e){
     state.onlyFree=!state.onlyFree;
     e.target.classList.toggle('ysh-btn-active',state.onlyFree);
