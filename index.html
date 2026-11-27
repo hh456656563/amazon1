@@ -7,21 +7,45 @@
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif; margin: 0; padding: 20px; background: #f8fafc; color: #0f172a; line-height: 1.6; }
   .wrap { max-width: 720px; margin: 0 auto; background: #fff; border-radius: 14px; padding: 22px; box-shadow: 0 4px 18px rgba(0,0,0,.08); }
-  h1 { font-size: 20px; margin: 0 0 12px; }
+  .top-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+  h1 { font-size: 20px; margin: 0; }
   h2 { font-size: 16px; margin: 22px 0 8px; border-left: 4px solid #ff9900; padding-left: 8px; }
   .btn { display: inline-block; background: #ff9900; color: #111; border: none; border-radius: 10px; padding: 14px 22px; font-size: 16px; font-weight: 700; cursor: pointer; text-decoration: none; }
   .btn:active { opacity: .85; }
+  .lock-btn { background: #e2e8f0; color: #334155; border: none; border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
   .drag-link { display: inline-block; margin-left: 10px; background: #232f3e; color: #fff; border-radius: 10px; padding: 14px 18px; font-size: 14px; font-weight: 700; text-decoration: none; }
   #msg { margin-left: 10px; font-weight: 700; color: #16a34a; font-size: 14px; }
   textarea { width: 100%; height: 110px; margin-top: 12px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-family: monospace; font-size: 12px; box-sizing: border-box; background: #f1f5f9; }
   ol, ul { padding-left: 20px; margin: 6px 0; }
   li { margin-bottom: 6px; }
   .note { font-size: 13px; color: #475569; background: #f1f5f9; padding: 10px 12px; border-radius: 8px; margin-top: 12px; }
+  #passGate { position: fixed; inset: 0; background: #f8fafc; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  #passBox { width: 100%; max-width: 360px; background: #fff; border-radius: 14px; padding: 24px; box-shadow: 0 8px 28px rgba(0,0,0,.1); }
+  #passBox h2 { border: none; padding: 0; margin: 0 0 8px; font-size: 18px; }
+  #passBox p { margin: 0 0 14px; font-size: 13px; color: #475569; }
+  #gatePw { width: 100%; font-size: 17px; padding: 11px; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 12px; }
+  #passBox label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #334155; margin-bottom: 14px; }
+  #gateBtn { width: 100%; padding: 12px; background: #ff9900; color: #111; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; }
+  #gateErr { color: #dc2626; font-size: 13px; margin-top: 10px; min-height: 18px; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Amazon バリエーション比較（iPad Safari用）</h1>
+<div id="passGate">
+  <form id="passBox" onsubmit="return false;">
+    <h2>Amazon バリエーション比較</h2>
+    <p>パスワードを入力してください</p>
+    <input type="password" id="gatePw" autocomplete="current-password" placeholder="パスワード">
+    <label><input type="checkbox" id="gateRemember" checked> この端末では次回から自動で開く</label>
+    <button type="submit" id="gateBtn">開く</button>
+    <div id="gateErr"></div>
+  </form>
+</div>
+
+<div id="mainApp" class="wrap" style="display:none;">
+  <div class="top-row">
+    <h1>Amazon バリエーション比較（iPad Safari用）</h1>
+    <button type="button" id="lockBtn" class="lock-btn">ロック</button>
+  </div>
   <p>Amazon.co.jpの商品ページや検索結果ページで、バリエーションごとの「スタイル・サイズ・価格・単価・出品者・在庫」を一括取得して比較表で表示するブックマークレットです。</p>
 
   <div>
@@ -50,6 +74,79 @@
 </div>
 
 <script>
+(function() {
+  var STORED_HASH = "pbkdf2$100000$qGoOxehhs3B7coX8Tz0qoQ==$MorThSYVOKj95UJu5ABFdUZmj2MQl1VPHt7LdA4SpK8=";
+  var STORAGE_KEY = "amz1_unlocked_v1";
+  var gate = document.getElementById("passGate");
+  var app = document.getElementById("mainApp");
+  var pwInput = document.getElementById("gatePw");
+  var remChk = document.getElementById("gateRemember");
+  var errEl = document.getElementById("gateErr");
+
+  function unb64(s) {
+    var bin = atob(s);
+    var b = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+    return b;
+  }
+
+  async function verify(password, stored) {
+    try {
+      var parts = String(stored).split("$");
+      if (parts.length !== 4 || parts[0] !== "pbkdf2") return false;
+      var key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+      var bits = new Uint8Array(await crypto.subtle.deriveBits({
+        name: "PBKDF2",
+        hash: "SHA-256",
+        salt: unb64(parts[2]),
+        iterations: parseInt(parts[1], 10)
+      }, key, 256));
+      var expect = unb64(parts[3]);
+      if (bits.length !== expect.length) return false;
+      var diff = 0;
+      for (var i = 0; i < bits.length; i++) diff |= bits[i] ^ expect[i];
+      return diff === 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function unlock() {
+    gate.style.display = "none";
+    app.style.display = "block";
+  }
+
+  function lock() {
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    pwInput.value = "";
+    errEl.textContent = "";
+    app.style.display = "none";
+    gate.style.display = "flex";
+  }
+
+  try {
+    if (localStorage.getItem(STORAGE_KEY) === STORED_HASH) {
+      unlock();
+    }
+  } catch (e) {}
+
+  document.getElementById("passBox").addEventListener("submit", async function(e) {
+    e.preventDefault();
+    errEl.textContent = "";
+    var ok = await verify(pwInput.value, STORED_HASH);
+    if (!ok) {
+      errEl.textContent = "パスワードが違います";
+      return;
+    }
+    if (remChk.checked) {
+      try { localStorage.setItem(STORAGE_KEY, STORED_HASH); } catch (e2) {}
+    }
+    unlock();
+  });
+
+  document.getElementById("lockBtn").addEventListener("click", lock);
+})();
+
 document.getElementById("copyBtn").addEventListener("click", async function() {
   var ta = document.getElementById("bmCode");
   var msg = document.getElementById("msg");
