@@ -53,7 +53,11 @@
     if(links.length){
       for(var i=0;i<links.length;i++){
         var linkEl=links[i];
-        var c=linkEl.closest('[class*="SearchResult_SearchResultItem__"]')||linkEl.parentElement.parentElement||linkEl.parentElement;
+        var c=linkEl.parentElement;
+        for(var up=0;up<4&&c;up++){
+          if(c.querySelector('[class*="ItemPrice_ItemPrice__"], [class*="SearchResultItem__price"]')){break;}
+          c=c.parentElement;
+        }
         if(!c){continue;}
         var title=(linkEl.innerText||'').replace(/\s+/g,' ').trim();
         if(!title||title.length<3){continue;}
