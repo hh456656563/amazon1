@@ -91,14 +91,17 @@
 
       var q=parseQty(title);
       var net=Math.max(0,price+ship-pt);
+      var isPr=/^\[PR\]/i.test(title);
 
       var oldB=c.querySelector('.rkt-unit-badge');
       if(oldB){oldB.remove();}
-      var badge=document.createElement('div');
-      badge.className='rkt-unit-badge';
-      badge.style.cssText='margin:4px 0;padding:4px 8px;background:#fef2f2;border:1px solid #bf0000;border-radius:6px;font-size:12px;font-weight:700;color:#991b1b;display:inline-block;';
-      badge.textContent='1'+q.unit+': '+Math.round(price/q.qty)+'円 (実質'+Math.round(net/q.qty)+'円・'+q.qty+q.unit+')';
-      linkEl.parentNode.insertBefore(badge,linkEl.nextSibling);
+      if(!isPr){
+        var badge=document.createElement('div');
+        badge.className='rkt-unit-badge';
+        badge.style.cssText='margin:4px 0;padding:4px 8px;background:#fef2f2;border:1px solid #bf0000;border-radius:6px;font-size:12px;font-weight:700;color:#991b1b;display:inline-block;';
+        badge.textContent='1'+q.unit+': '+Math.round(price/q.qty)+'円 (実質'+Math.round(net/q.qty)+'円・'+q.qty+q.unit+')';
+        linkEl.parentNode.insertBefore(badge,linkEl.nextSibling);
+      }
 
       list.push({
         idx:list.length,
@@ -112,7 +115,8 @@
         qty:q.qty,
         unit:q.unit,
         rule:q.rule,
-        store:store
+        store:store,
+        isPr:isPr
       });
     }
     return list;
@@ -150,13 +154,13 @@
     document.head.appendChild(stEl);
   }
 
-  var state={sort:'orig',dir:1,onlyFree:false,q:'',priceRange:'',priceTarget:'net'};
+  var state={sort:'orig',dir:1,onlyFree:false,noPr:true,q:'',priceRange:'',priceTarget:'net'};
   var m=document.createElement('div');
   m.id='rkt-unit-modal';
   m.innerHTML=
     '<div id="rkt-unit-box">'+
       '<div id="rkt-unit-head">'+
-        '<div id="rkt-unit-title">楽天市場 単価一覧 v1.4 ('+items.length+'件)</div>'+
+        '<div id="rkt-unit-title">楽天市場 単価一覧 v1.5 ('+items.length+'件)</div>'+
         '<button type="button" id="rkt-close" class="rkt-btn">閉じる</button>'+
       '</div>'+
       '<div id="rkt-unit-ctrl">'+
@@ -170,6 +174,7 @@
         '<button type="button" data-sort="orig" class="rkt-btn rkt-btn-active">元の順</button>'+
         '<button type="button" id="rkt-dir" class="rkt-btn rkt-btn-active">昇順▲</button>'+
         '<button type="button" id="rkt-free" class="rkt-btn">送料無料のみ</button>'+
+        '<button type="button" id="rkt-nopr" class="rkt-btn rkt-btn-active">PR除外</button>'+
       '</div>'+
       '<div id="rkt-unit-body"></div>'+
     '</div>';
@@ -195,6 +200,7 @@
   function render(){
     var body=document.getElementById('rkt-unit-body');
     var arr=items.slice();
+    if(state.noPr){arr=arr.filter(function(it){return !it.isPr;});}
     if(state.onlyFree){arr=arr.filter(function(it){return it.ship===0;});}
     if(state.q){
       var tokens=state.q.split(/\s+/).filter(Boolean);
@@ -232,7 +238,7 @@
     }
 
     var titleEl=document.getElementById('rkt-unit-title');
-    if(titleEl){titleEl.textContent='楽天市場 単価一覧 v1.4 ('+arr.length+'/'+items.length+'件)';}
+    if(titleEl){titleEl.textContent='楽天市場 単価一覧 v1.5 ('+arr.length+'/'+items.length+'件)';}
 
     var h='<table class="rkt-tbl"><thead><tr>'+
       '<th>1個 / 1個(実質)</th><th>数量</th><th>商品価格 / 実質価格</th><th>商品名・ショップ</th><th></th>'+
@@ -279,6 +285,11 @@
   document.getElementById('rkt-free').onclick=function(e){
     state.onlyFree=!state.onlyFree;
     e.target.classList.toggle('rkt-btn-active',state.onlyFree);
+    render();
+  };
+  document.getElementById('rkt-nopr').onclick=function(e){
+    state.noPr=!state.noPr;
+    e.target.classList.toggle('rkt-btn-active',state.noPr);
     render();
   };
   var sBtns=m.querySelectorAll('[data-sort]');
