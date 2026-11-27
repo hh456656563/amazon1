@@ -47,68 +47,90 @@
   }
 
   function parseCards(){
-    var nodes=document.querySelectorAll('div[class*="SearchResult_SearchResult__"], li[class*="LoopList__item"]');
+    var links=document.querySelectorAll('a[class*="SearchResultItem__detailLink"]');
     var list=[];
     var seen={};
-    for(var i=0;i<nodes.length;i++){
-      var c=nodes[i];
-      var linkEl=c.querySelector('a[class*="SearchResultItem__detailLink"], a[href*="store.shopping.yahoo.co.jp"], a[href*="rdUrl="]');
-      if(!linkEl){continue;}
-      var title=(linkEl.innerText||'').replace(/\s+/g,' ').trim();
-      if(!title||title.length<3){continue;}
-      var href=linkEl.getAttribute('href')||'';
-      if(!href||seen[href+'|'+title]){continue;}
-      seen[href+'|'+title]=true;
+    if(links.length){
+      for(var i=0;i<links.length;i++){
+        var linkEl=links[i];
+        var c=linkEl.closest('[class*="SearchResult_SearchResultItem__"]')||linkEl.parentElement.parentElement||linkEl.parentElement;
+        if(!c){continue;}
+        var title=(linkEl.innerText||'').replace(/\s+/g,' ').trim();
+        if(!title||title.length<3){continue;}
+        var href=linkEl.getAttribute('href')||'';
+        if(!href||seen[href+'|'+title]){continue;}
+        seen[href+'|'+title]=true;
 
-      var priceEl=c.querySelector('[class*="ItemPrice_ItemPrice__"], [class*="SearchResultItem__price"]');
-      var priceTxt=priceEl?(priceEl.innerText||''):(c.innerText||'');
-      var pm=priceTxt.replace(/,/g,'').match(/([0-9]+)\s*円/);
-      if(!pm){continue;}
-      var price=parseInt(pm[1],10);
+        var priceEl=c.querySelector('[class*="ItemPrice_ItemPrice__"], [class*="SearchResultItem__price"]');
+        var priceTxt=priceEl?(priceEl.innerText||''):(c.innerText||'');
+        var pm=priceTxt.replace(/,/g,'').match(/([0-9]+)\s*円/);
+        if(!pm){continue;}
+        var price=parseInt(pm[1],10);
 
-      var shipEl=c.querySelector('[class*="ItemPostage_ItemPostage__"]');
-      var shipTxt=shipEl?(shipEl.innerText||'').replace(/\s+/g,' ').trim():'';
-      var ship=0;
-      if(shipTxt&&!/無料/.test(shipTxt)){
-        var sm=shipTxt.replace(/,/g,'').match(/([0-9]+)\s*円/);
-        if(sm){ship=parseInt(sm[1],10);}
+        var shipEl=c.querySelector('[class*="ItemPostage_ItemPostage__"]');
+        var shipTxt=shipEl?(shipEl.innerText||'').replace(/\s+/g,' ').trim():'';
+        var ship=0;
+        if(shipTxt&&!/無料/.test(shipTxt)){
+          var sm=shipTxt.replace(/,/g,'').match(/([0-9]+)\s*円/);
+          if(sm){ship=parseInt(sm[1],10);}
+        }
+
+        var ptEl=c.querySelector('[class*="SearchResultItem__point"]');
+        var ptTxt=ptEl?(ptEl.innerText||'').replace(/\s+/g,' ').trim():'';
+        var pt=0;
+        var ptm=ptTxt.replace(/,/g,'').match(/([0-9]+)\s*pt/i);
+        if(ptm){pt=parseInt(ptm[1],10);}
+
+        var stEl=c.querySelector('[class*="SearchResultItem__store"]');
+        var store=stEl?(stEl.innerText||'').replace(/\s+/g,' ').trim():'';
+
+        var q=parseQty(title);
+        var total=price+ship;
+        var net=Math.max(0,total-pt);
+
+        var oldB=c.querySelector('.ysh-unit-badge');
+        if(oldB){oldB.remove();}
+        var badge=document.createElement('div');
+        badge.className='ysh-unit-badge';
+        badge.style.cssText='margin:4px 0;padding:4px 8px;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;font-size:12px;font-weight:700;color:#92400e;display:inline-block;';
+        badge.textContent='単価: '+Math.round(total/q.qty)+'円/'+q.unit+' ('+q.qty+q.unit+'・実質'+Math.round(net/q.qty)+'円)';
+        linkEl.parentNode.insertBefore(badge,linkEl.nextSibling);
+
+        list.push({
+          idx:list.length,
+          title:title,
+          href:href,
+          price:price,
+          ship:ship,
+          shipTxt:shipTxt||(ship===0?'送料無料':'+送料'+ship+'円'),
+          pt:pt,
+          total:total,
+          net:net,
+          qty:q.qty,
+          unit:q.unit,
+          rule:q.rule,
+          store:store
+        });
       }
+      return list;
+    }
 
-      var ptEl=c.querySelector('[class*="SearchResultItem__point"]');
-      var ptTxt=ptEl?(ptEl.innerText||'').replace(/\s+/g,' ').trim():'';
-      var pt=0;
-      var ptm=ptTxt.replace(/,/g,'').match(/([0-9]+)\s*pt/i);
-      if(ptm){pt=parseInt(ptm[1],10);}
-
-      var stEl=c.querySelector('[class*="SearchResultItem__store"]');
-      var store=stEl?(stEl.innerText||'').replace(/\s+/g,' ').trim():'';
-
-      var q=parseQty(title);
-      var total=price+ship;
-      var net=Math.max(0,total-pt);
-
-      var oldB=c.querySelector('.ysh-unit-badge');
-      if(oldB){oldB.remove();}
-      var badge=document.createElement('div');
-      badge.className='ysh-unit-badge';
-      badge.style.cssText='margin:4px 0;padding:4px 8px;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;font-size:12px;font-weight:700;color:#92400e;display:inline-block;';
-      badge.textContent='単価: '+Math.round(total/q.qty)+'円/'+q.unit+' ('+q.qty+q.unit+'・実質'+Math.round(net/q.qty)+'円)';
-      linkEl.parentNode.insertBefore(badge,linkEl.nextSibling);
-
+    var nodes=document.querySelectorAll('li[class*="LoopList__item"]');
+    for(var j=0;j<nodes.length;j++){
+      var c2=nodes[j];
+      var link2=c2.querySelector('a[href*="store.shopping.yahoo.co.jp"], a[href*="rdUrl="]');
+      if(!link2){continue;}
+      var title2=(link2.innerText||'').replace(/\s+/g,' ').trim();
+      if(!title2||title2.length<3){continue;}
+      var href2=link2.getAttribute('href')||'';
+      if(!href2||seen[href2+'|'+title2]){continue;}
+      seen[href2+'|'+title2]=true;
+      var pm2=(c2.innerText||'').replace(/,/g,'').match(/([0-9]+)\s*円/);
+      if(!pm2){continue;}
+      var price2=parseInt(pm2[1],10);
+      var q2=parseQty(title2);
       list.push({
-        idx:list.length,
-        title:title,
-        href:href,
-        price:price,
-        ship:ship,
-        shipTxt:shipTxt||(ship===0?'送料無料':'+送料'+ship+'円'),
-        pt:pt,
-        total:total,
-        net:net,
-        qty:q.qty,
-        unit:q.unit,
-        rule:q.rule,
-        store:store
+        idx:list.length,title:title2,href:href2,price:price2,ship:0,shipTxt:'',pt:0,total:price2,net:price2,qty:q2.qty,unit:q2.unit,rule:q2.rule,store:''
       });
     }
     return list;
