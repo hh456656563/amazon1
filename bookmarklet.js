@@ -190,7 +190,7 @@
     m.innerHTML=
       '<div id="amz-var-box">'+
         '<div id="amz-var-head">'+
-          '<div id="amz-var-title">v1.3 | '+esc(title)+'</div>'+
+          '<div id="amz-var-title">v1.7 | '+esc(title)+'</div>'+
           '<div id="amz-var-status">準備中</div>'+
           '<button type="button" id="amz-var-stop" class="amz-btn amz-btn-danger">停止</button>'+
           '<button type="button" id="amz-var-close" class="amz-btn">閉じる</button>'+
@@ -417,42 +417,299 @@
     return;
   }
 
+  function toHalfAmz(s){
+    return String(s||'').replace(/[０-９]/g,function(ch){
+      return String.fromCharCode(ch.charCodeAt(0)-0xFEE0);
+    }).replace(/✕|✖/g,'×');
+  }
+  function parseQtyAmz(rawTitle){
+    var t=toHalfAmz(rawTitle);
+    t=t.replace(/[0-9]+(?:\.[0-9]+)?\s*(?:円|％|%|kcal|mg|ml|kg|mm|cm|g|l)(?![a-z])/gi,' ');
+    t=t.replace(/1\s*(?:本|個|袋|枚|粒|錠|パック|缶|包)\s*(?:あたり|当たり|につき)/g,' ');
+    var mTotal=t.match(/(?:合計|計)\s*([0-9]+)\s*(本|個|袋|枚|錠|粒|パック|缶|包|食|回)/);
+    if(mTotal){
+      var nT=parseInt(mTotal[1],10);
+      if(nT>0){return {qty:nT,unit:mTotal[2],rule:'合計'};}
+    }
+    var mMul=t.match(/([0-9]+)\s*(本|個|袋|枚|錠|粒|パック|缶|包|食|種)?\s*[×x\*]\s*([0-9]+)\s*(箱|ケース|ボール|セット|パック|袋|本|個)/i);
+    if(mMul){
+      var a=parseInt(mMul[1],10),b=parseInt(mMul[3],10);
+      if(a>0&&b>0&&a*b<=5000){
+        return {qty:a*b,unit:mMul[2]||mMul[4],rule:a+'×'+b};
+      }
+    }
+    var mSingle=t.match(/([0-9]+)\s*(本|個|袋|枚|錠|粒|パック|缶|包|食|回)(?:入|セット|詰|組)?/);
+    if(mSingle){
+      var nS=parseInt(mSingle[1],10);
+      if(nS>0){return {qty:nS,unit:mSingle[2],rule:'単体'};}
+    }
+    return {qty:1,unit:'個',rule:'不明(1)'};
+  }
+  function parseRangeAmz(str){
+    var s=toHalfAmz(str||'').replace(/,/g,'').trim();
+    if(!s){return null;}
+    var mR=s.match(/^([0-9]+)?\s*[-~〜]\s*([0-9]+)?$/);
+    if(mR){
+      var mn=mR[1]?parseInt(mR[1],10):0;
+      var mx=mR[2]?parseInt(mR[2],10):Infinity;
+      return {min:mn,max:mx};
+    }
+    var mOne=s.match(/^[0-9]+$/);
+    if(mOne){
+      var v=parseInt(mOne[0],10);
+      return {min:v,max:v};
+    }
+    return null;
+  }
+
   var cards=document.querySelectorAll('div[data-component-type="s-search-result"][data-asin]');
   if(cards.length){
     injectStyle();
-    var added=0;
+    var oldUM=document.getElementById('amz-unit-modal');
+    if(oldUM){oldUM.remove();}
+    var sItems=[];
     for(var c=0;c<cards.length;c++){
       (function(card){
         var asin=card.getAttribute('data-asin');
-        if(!asin||card.querySelector('.amz-s-btn')){return;}
+        if(!asin){return;}
         var h2=card.querySelector('h2, .s-title-instructions-style');
         if(!h2){return;}
-        var btn=document.createElement('button');
-        btn.type='button';
-        btn.className='amz-s-btn';
-        btn.textContent='バリエーション比較';
-        btn.onclick=async function(ev){
-          ev.preventDefault();
-          ev.stopPropagation();
-          btn.disabled=true;
-          btn.textContent='読込中…';
-          try{
-            var r=await fetch('/dp/'+asin+'?th=1&psc=1',{credentials:'same-origin'});
-            var tx=await r.text();
-            var d=new DOMParser().parseFromString(tx,'text/html');
-            await runForProduct(d,tx,asin);
-          }catch(e){
-            alert('商品ページの取得に失敗しました。');
-          }finally{
-            btn.disabled=false;
-            btn.textContent='バリエーション比較';
-          }
-        };
-        h2.parentNode.insertBefore(btn,h2.nextSibling);
-        added++;
+        var title=(h2.innerText||'').replace(/\s+/g,' ').trim();
+        if(!title){return;}
+        var aEl=h2.closest('a')||card.querySelector('h2 a, a.a-link-normal[href*="/dp/"]');
+        var href=aEl?(aEl.getAttribute('href')||('/dp/'+asin)):('/dp/'+asin);
+
+        if(!card.querySelector('.amz-s-btn')){
+          var btn=document.createElement('button');
+          btn.type='button';
+          btn.className='amz-s-btn';
+          btn.textContent='バリエーション比較';
+          btn.onclick=async function(ev){
+            ev.preventDefault();
+            ev.stopPropagation();
+            btn.disabled=true;
+            btn.textContent='読込中…';
+            try{
+              var r=await fetch('/dp/'+asin+'?th=1&psc=1',{credentials:'same-origin'});
+              var tx=await r.text();
+              var d=new DOMParser().parseFromString(tx,'text/html');
+              await runForProduct(d,tx,asin);
+            }catch(e){
+              alert('商品ページの取得に失敗しました。');
+            }finally{
+              btn.disabled=false;
+              btn.textContent='バリエーション比較';
+            }
+          };
+          h2.parentNode.insertBefore(btn,h2.nextSibling);
+        }
+
+        var priceEl=card.querySelector('.a-price:not(.a-text-price) .a-offscreen');
+        var priceTxt=priceEl?(priceEl.textContent||''):'';
+        var pm=priceTxt.replace(/,/g,'').match(/([0-9]+)/);
+        if(!pm){return;}
+        var price=parseInt(pm[1],10);
+
+        var cardTxt=(card.innerText||'').replace(/\s+/g,' ');
+        var pt=0;
+        var ptm=cardTxt.replace(/,/g,'').match(/([0-9]+)\s*ポイント/);
+        if(ptm){pt=parseInt(ptm[1],10);}
+
+        var ship=0;
+        var shipTxt='無料配送';
+        if(!/無料配送|配送料無料/.test(cardTxt)){
+          var sm=cardTxt.replace(/,/g,'').match(/配送料\s*[￥¥]?\s*([0-9]+)/);
+          if(sm){ship=parseInt(sm[1],10);shipTxt='+送料'+ship+'円';}
+          else{shipTxt='配送確認';}
+        }
+
+        var isPr=card.classList.contains('AdHolder')||!!card.querySelector('.puis-sponsored-label-text, [data-component-type="sp-sponsored-result"]')||/\bスポンサー\b/.test(cardTxt);
+        var q=parseQtyAmz(title);
+        var net=Math.max(0,price+ship-pt);
+
+        var oldB=card.querySelector('.amz-unit-badge');
+        if(oldB){oldB.remove();}
+        if(!isPr){
+          var badge=document.createElement('div');
+          badge.className='amz-unit-badge';
+          badge.style.cssText='margin:4px 0;padding:4px 8px;background:#fffbeb;border:1px solid #ff9900;border-radius:6px;font-size:12px;font-weight:700;color:#92400e;display:inline-block;';
+          badge.textContent='1'+q.unit+': '+Math.round(price/q.qty)+'円 (実質'+Math.round(net/q.qty)+'円・'+q.qty+q.unit+')';
+          h2.parentNode.insertBefore(badge,h2.nextSibling);
+        }
+
+        sItems.push({
+          idx:sItems.length,
+          asin:asin,
+          title:title,
+          href:href,
+          price:price,
+          ship:ship,
+          shipTxt:shipTxt,
+          pt:pt,
+          net:net,
+          qty:q.qty,
+          unit:q.unit,
+          rule:q.rule,
+          isPr:isPr
+        });
       })(cards[c]);
     }
-    alert(added+'件の商品に「バリエーション比較」ボタンを追加しました。');
+
+    if(!sItems.length){
+      alert('価格付きの検索結果が見つかりませんでした。');
+      return;
+    }
+
+    var uSt=document.getElementById('amz-unit-style');
+    if(!uSt){
+      uSt=document.createElement('style');
+      uSt.id='amz-unit-style';
+      uSt.textContent=
+        '#amz-unit-modal{position:fixed;inset:0;z-index:2147483647;background:rgba(15,23,42,.65);display:flex;align-items:center;justify-content:center;padding:12px;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif;-webkit-text-size-adjust:100%;}'+
+        '#amz-unit-box{background:#fff;color:#111;width:100%;max-width:1020px;height:90vh;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.35);}'+
+        '#amz-unit-head{background:#232f3e;color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px;justify-content:space-between;}'+
+        '#amz-unit-title{font-size:15px;font-weight:700;flex:1;}'+
+        '#amz-unit-ctrl{padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;}'+
+        '#amz-unit-q{flex:1;min-width:160px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;}'+
+        '#amz-price-range{width:130px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;}'+
+        '#amz-price-target{padding:7px 8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff;}'+
+        '#amz-unit-body{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:8px 12px 16px;}'+
+        '.amz-u{font-size:15px;font-weight:700;color:#b12704;white-space:nowrap;}'+
+        '.amz-sub{font-size:12px;color:#475569;white-space:nowrap;}'+
+        '.amz-qty-in{width:56px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;text-align:right;}';
+      document.head.appendChild(uSt);
+    }
+
+    var uState={sort:'orig',dir:1,onlyFree:false,noPr:true,q:'',priceRange:'',priceTarget:'net'};
+    var um=document.createElement('div');
+    um.id='amz-unit-modal';
+    um.innerHTML=
+      '<div id="amz-unit-box">'+
+        '<div id="amz-unit-head">'+
+          '<div id="amz-unit-title">Amazon 単価一覧 v1.7 ('+sItems.length+'件)</div>'+
+          '<button type="button" id="amz-u-close" class="amz-btn">閉じる</button>'+
+        '</div>'+
+        '<div id="amz-unit-ctrl">'+
+          '<input id="amz-unit-q" type="search" placeholder="絞り込み (例: 24本 -訳あり)">'+
+          '<select id="amz-price-target"><option value="net">実質価格</option><option value="price">商品価格</option></select>'+
+          '<input id="amz-price-range" type="text" placeholder="例: 1-99999">'+
+          '<button type="button" data-usort="net_unit" class="amz-btn">1個(実質)</button>'+
+          '<button type="button" data-usort="unit" class="amz-btn">1個</button>'+
+          '<button type="button" data-usort="net" class="amz-btn">実質価格</button>'+
+          '<button type="button" data-usort="price" class="amz-btn">商品価格</button>'+
+          '<button type="button" data-usort="orig" class="amz-btn amz-btn-active">元の順</button>'+
+          '<button type="button" id="amz-u-dir" class="amz-btn amz-btn-active">昇順▲</button>'+
+          '<button type="button" id="amz-u-free" class="amz-btn">送料無料のみ</button>'+
+          '<button type="button" id="amz-u-nopr" class="amz-btn amz-btn-active">PR除外</button>'+
+        '</div>'+
+        '<div id="amz-unit-body"></div>'+
+      '</div>';
+    document.body.appendChild(um);
+
+    function renderU(){
+      var body=document.getElementById('amz-unit-body');
+      var arr=sItems.slice();
+      if(uState.noPr){arr=arr.filter(function(it){return !it.isPr;});}
+      if(uState.onlyFree){arr=arr.filter(function(it){return it.ship===0;});}
+      if(uState.q){
+        var tokens=uState.q.split(/\s+/).filter(Boolean);
+        arr=arr.filter(function(it){
+          var hay=it.title.toLowerCase();
+          for(var t=0;t<tokens.length;t++){
+            var tok=tokens[t];
+            if(tok.charAt(0)==='-'&&tok.length>1){
+              if(hay.indexOf(tok.slice(1))>=0){return false;}
+            }else{
+              if(hay.indexOf(tok)<0){return false;}
+            }
+          }
+          return true;
+        });
+      }
+      var rg=parseRangeAmz(uState.priceRange);
+      if(rg){
+        arr=arr.filter(function(it){
+          var val=uState.priceTarget==='price'?it.price:it.net;
+          return val>=rg.min&&val<=rg.max;
+        });
+      }
+      var d=uState.dir;
+      if(uState.sort==='net_unit'){
+        arr.sort(function(a,b){return d*((a.net/a.qty)-(b.net/b.qty))||d*(a.net-b.net);});
+      }else if(uState.sort==='unit'){
+        arr.sort(function(a,b){return d*((a.price/a.qty)-(b.price/b.qty))||d*(a.price-b.price);});
+      }else if(uState.sort==='net'){
+        arr.sort(function(a,b){return d*(a.net-b.net)||a.idx-b.idx;});
+      }else if(uState.sort==='price'){
+        arr.sort(function(a,b){return d*(a.price-b.price)||a.idx-b.idx;});
+      }else{
+        arr.sort(function(a,b){return d*(a.idx-b.idx);});
+      }
+      var tEl=document.getElementById('amz-unit-title');
+      if(tEl){tEl.textContent='Amazon 単価一覧 v1.7 ('+arr.length+'/'+sItems.length+'件)';}
+
+      var h='<table class="amz-table"><thead><tr>'+
+        '<th>1個 / 1個(実質)</th><th>数量</th><th>商品価格 / 実質価格</th><th>商品名</th><th></th>'+
+        '</tr></thead><tbody>';
+      for(var i=0;i<arr.length;i++){
+        var it=arr[i];
+        var u=(it.price/it.qty).toFixed(1).replace(/\.0$/,'');
+        var nu=(it.net/it.qty).toFixed(1).replace(/\.0$/,'');
+        h+='<tr>'+
+          '<td><div class="amz-u">実質 '+nu+'円/'+esc(it.unit)+'</div><div class="amz-sub">1個 '+u+'円</div></td>'+
+          '<td><input type="number" min="1" class="amz-qty-in" data-idx="'+it.idx+'" value="'+it.qty+'"><div class="amz-sub">'+esc(it.rule)+'</div></td>'+
+          '<td><div><b>実質 '+it.net.toLocaleString()+'円</b></div><div class="amz-sub">商品 '+it.price.toLocaleString()+'円 / '+esc(it.shipTxt)+(it.pt?' / -'+it.pt+'pt':'')+'</div></td>'+
+          '<td><div>'+esc(it.title)+'</div></td>'+
+          '<td><a class="amz-open" href="'+esc(it.href)+'" target="_blank" rel="noopener">開く</a></td>'+
+          '</tr>';
+      }
+      h+='</tbody></table>';
+      body.innerHTML=h;
+
+      var qIns=body.querySelectorAll('.amz-qty-in');
+      for(var k=0;k<qIns.length;k++){
+        qIns[k].onchange=function(e){
+          var idx=parseInt(e.target.getAttribute('data-idx'),10);
+          var val=parseInt(e.target.value,10);
+          if(val>0){
+            for(var z=0;z<sItems.length;z++){
+              if(sItems[z].idx===idx){sItems[z].qty=val;sItems[z].rule='手動';break;}
+            }
+            renderU();
+          }
+        };
+      }
+    }
+
+    document.getElementById('amz-u-close').onclick=function(){um.remove();};
+    document.getElementById('amz-unit-q').oninput=function(e){uState.q=e.target.value.trim().toLowerCase();renderU();};
+    document.getElementById('amz-price-range').oninput=function(e){uState.priceRange=e.target.value;renderU();};
+    document.getElementById('amz-price-target').onchange=function(e){uState.priceTarget=e.target.value;renderU();};
+    document.getElementById('amz-u-dir').onclick=function(e){
+      uState.dir*=-1;
+      e.target.textContent=uState.dir===1?'昇順▲':'降順▼';
+      renderU();
+    };
+    document.getElementById('amz-u-free').onclick=function(e){
+      uState.onlyFree=!uState.onlyFree;
+      e.target.classList.toggle('amz-btn-active',uState.onlyFree);
+      renderU();
+    };
+    document.getElementById('amz-u-nopr').onclick=function(e){
+      uState.noPr=!uState.noPr;
+      e.target.classList.toggle('amz-btn-active',uState.noPr);
+      renderU();
+    };
+    var sBtns=um.querySelectorAll('[data-usort]');
+    for(var i=0;i<sBtns.length;i++){
+      sBtns[i].onclick=function(e){
+        uState.sort=e.target.getAttribute('data-usort');
+        for(var j=0;j<sBtns.length;j++){sBtns[j].classList.remove('amz-btn-active');}
+        e.target.classList.add('amz-btn-active');
+        renderU();
+      };
+    }
+    renderU();
     return;
   }
 

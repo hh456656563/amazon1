@@ -91,14 +91,18 @@
         var q=parseQty(title);
         var total=price+ship;
         var net=Math.max(0,price+ship-pt);
+        var prEl=c.querySelector('[class*="Ad"], [class*="Sponsor"], [data-is-ad]');
+        var isPr=/^\[PR\]/i.test(title)||!!prEl||/(?:^|\s)(?:PR|広告)(?:\s|$)/.test(c.innerText||'');
 
         var oldB=c.querySelector('.ysh-unit-badge');
         if(oldB){oldB.remove();}
-        var badge=document.createElement('div');
-        badge.className='ysh-unit-badge';
-        badge.style.cssText='margin:4px 0;padding:4px 8px;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;font-size:12px;font-weight:700;color:#92400e;display:inline-block;';
-        badge.textContent='1'+q.unit+': '+Math.round(price/q.qty)+'円 (実質'+Math.round(net/q.qty)+'円・'+q.qty+q.unit+')';
-        linkEl.parentNode.insertBefore(badge,linkEl.nextSibling);
+        if(!isPr){
+          var badge=document.createElement('div');
+          badge.className='ysh-unit-badge';
+          badge.style.cssText='margin:4px 0;padding:4px 8px;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;font-size:12px;font-weight:700;color:#92400e;display:inline-block;';
+          badge.textContent='1'+q.unit+': '+Math.round(price/q.qty)+'円 (実質'+Math.round(net/q.qty)+'円・'+q.qty+q.unit+')';
+          linkEl.parentNode.insertBefore(badge,linkEl.nextSibling);
+        }
 
         list.push({
           idx:list.length,
@@ -113,7 +117,8 @@
           qty:q.qty,
           unit:q.unit,
           rule:q.rule,
-          store:store
+          store:store,
+          isPr:isPr
         });
       }
       return list;
@@ -172,26 +177,27 @@
     document.head.appendChild(stEl);
   }
 
-  var state={sort:'net_unit',dir:1,onlyFree:false,q:'',priceRange:'',priceTarget:'net'};
+  var state={sort:'orig',dir:1,onlyFree:false,noPr:true,q:'',priceRange:'',priceTarget:'net'};
   var m=document.createElement('div');
   m.id='ysh-unit-modal';
   m.innerHTML=
     '<div id="ysh-unit-box">'+
       '<div id="ysh-unit-head">'+
-        '<div id="ysh-unit-title">Yahoo!ショッピング 単価一覧 v1.6 ('+items.length+'件)</div>'+
+        '<div id="ysh-unit-title">Yahoo!ショッピング 単価一覧 v1.7 ('+items.length+'件)</div>'+
         '<button type="button" id="ysh-close" class="ysh-btn">閉じる</button>'+
       '</div>'+
       '<div id="ysh-unit-ctrl">'+
         '<input id="ysh-unit-q" type="search" placeholder="絞り込み (例: 24本 -訳あり)">'+
         '<select id="ysh-price-target"><option value="net">実質価格</option><option value="price">商品価格</option></select>'+
         '<input id="ysh-price-range" type="text" placeholder="例: 1-99999">'+
-        '<button type="button" data-sort="net_unit" class="ysh-btn ysh-btn-active">1個(実質)</button>'+
+        '<button type="button" data-sort="net_unit" class="ysh-btn">1個(実質)</button>'+
         '<button type="button" data-sort="unit" class="ysh-btn">1個</button>'+
         '<button type="button" data-sort="net" class="ysh-btn">実質価格</button>'+
         '<button type="button" data-sort="price" class="ysh-btn">商品価格</button>'+
-        '<button type="button" data-sort="orig" class="ysh-btn">元の順</button>'+
+        '<button type="button" data-sort="orig" class="ysh-btn ysh-btn-active">元の順</button>'+
         '<button type="button" id="ysh-dir" class="ysh-btn ysh-btn-active">昇順▲</button>'+
         '<button type="button" id="ysh-free" class="ysh-btn">送料無料のみ</button>'+
+        '<button type="button" id="ysh-nopr" class="ysh-btn ysh-btn-active">PR除外</button>'+
       '</div>'+
       '<div id="ysh-unit-body"></div>'+
     '</div>';
@@ -217,6 +223,7 @@
   function render(){
     var body=document.getElementById('ysh-unit-body');
     var arr=items.slice();
+    if(state.noPr){arr=arr.filter(function(it){return !it.isPr;});}
     if(state.onlyFree){arr=arr.filter(function(it){return it.ship===0;});}
     if(state.q){
       var tokens=state.q.split(/\s+/).filter(Boolean);
@@ -301,6 +308,11 @@
   document.getElementById('ysh-free').onclick=function(e){
     state.onlyFree=!state.onlyFree;
     e.target.classList.toggle('ysh-btn-active',state.onlyFree);
+    render();
+  };
+  document.getElementById('ysh-nopr').onclick=function(e){
+    state.noPr=!state.noPr;
+    e.target.classList.toggle('ysh-btn-active',state.noPr);
     render();
   };
   var sBtns=m.querySelectorAll('[data-sort]');
